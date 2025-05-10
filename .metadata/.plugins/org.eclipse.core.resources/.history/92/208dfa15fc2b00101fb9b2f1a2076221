@@ -1,0 +1,34 @@
+package com.example.simpleauction.entity;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "items")
+@Data
+@NoArgsConstructor
+public class Item {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String name;
+    private String description;
+    private BigDecimal startingPrice;
+    private String imageUrl;
+    private LocalDateTime auctionEndTime;
+
+    @ManyToOne // For simplicity, not strictly enforcing seller in this minimal version
+    @JoinColumn(name = "seller_id", nullable = true)
+    private User seller;
+
+    public Item(String name, String description, BigDecimal startingPrice, String imageUrl, LocalDateTime endTime) {
+        this.name = name;
+        this.description = description;
+        this.startingPrice = startingPrice;
+        this.imageUrl = imageUrl;
+        this.auctionEndTime = endTime;
+    }
+}

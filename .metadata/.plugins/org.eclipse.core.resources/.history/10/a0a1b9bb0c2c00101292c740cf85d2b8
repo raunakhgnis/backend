@@ -1,0 +1,26 @@
+package com.example.simpleauction.service;
+
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.stereotype.Service;
+
+import com.example.simpleauction.entity.Item;
+import com.example.simpleauction.repository.ItemRepository;
+
+@Service
+public class ItemService {
+    private final ItemRepository itemRepository;
+
+    public ItemService(ItemRepository itemRepository) {
+        this.itemRepository = itemRepository;
+    }
+
+    public List<Item> getAllItems() {
+        return itemRepository.findAll();
+    }
+
+    public Optional<Item> getItemById(Long id) {
+        return itemRepository.findById(id);
+    }
+}

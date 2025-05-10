@@ -1,0 +1,144 @@
+package com.example.simpleauction.service;
+
+import com.example.simpleauction.entity.Item;
+import com.example.simpleauction.entity.User;
+import com.razorpay.Order;
+import com.razorpay.RazorpayClient;
+import com.razorpay.RazorpayException;
+import jakarta.persistence.EntityNotFoundException;
+import org.json.JSONObject; // From org.json library, often included with Razorpay SDK or add manually
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+public class PaymentService { // Renamed from ItemService or separate service
+
+    private static final Logger logger = LoggerFactory.getLogger(PaymentService.class);
+
+    private final ItemService itemService; // To get item details
+    private final RazorpayClient razorpayClient;
+
+    public PaymentService(
+            ItemService itemService,
+            @Value("${razorpay.key.id}") String razorpayKeyId,
+            @Value("${razorpay.key.secret}") String razorpayKeySecret
+    ) throws RazorpayException {
+        this.itemService = itemService;
+        this.razorpayClient = new RazorpayClient(razorpayKeyId, razorpayKeySecret);
+    }
+
+    @Transactional // Important for updating item status
+    public String createRazorpayOrder(Long itemId, User winningUser) throws RazorpayException {
+        Item item = itemService.getItemEntityById(itemId); // Get managed item entity
+
+        // 1. Validations (Auction ended, correct winner, not already paid)
+        if (item.getAuctionEndTime() == null || LocalDateTime.now().isBefore(item.getAuctionEndTime())) {
+            throw new IllegalStateException("Auction has not ended yet.");
+        }
+        if (item.getHighestBidder() == null || !item.getHighestBidder().getId().equals(winningUser.getId())) {
+            throw new IllegalArgumentException("You are not the highest bidder for this item.");
+        }
+        if ("PAID".equalsIgnoreCase(item.getPaymentStatus())) {
+            throw new IllegalStateException("This item has already been paid for.");
+        }
+        if ("PENDING".equalsIgnoreCase(item.getPaymentStatus())) {
+            // Optional: Check for existing order and return its ID if still valid
+            // For simplicity now, we'll allow creating a new order if previous was pending and not completed
+            logger.info("Payment for item {} was PENDING. Creating new Razorpay order.", itemId);
+        }
+
+
+        // 2. Prepare Order Request for Razorpay
+        // Amount needs to be in the smallest currency unit (e.g., paise for INR)
+        // Ensure currentBidPrice is not null
+        BigDecimal amountInPaisa = item.getCurrentBidPrice() != null ?
+                                   item.getCurrentBidPrice().multiply(new BigDecimal("100")) :
+                                   new BigDecimal("0"); // Or handle error if price is null
+
+        if (amountInPaisa.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Invalid amount for payment.");
+        }
+
+        JSONObject orderRequest = new JSONObject();
+        orderRequest.put("amount", amountInPaisa.intValue()); // Amount in paise
+        orderRequest.put("currency", "INR"); // Or your desired currency
+        orderRequest.put("receipt", "receipt_item_" + item.getId() + "_" + System.currentTimeMillis());
+        orderRequest.put("payment_capture", 1); // Auto capture payment
+
+        JSONObject notes = new JSONObject();
+        notes.put("itemId", item.getId().toString());
+        notes.put("itemName", item.getName());
+        notes.put("userId", winningUser.getId().toString());
+        notes.put("userEmail", winningUser.getEmail());
+        orderRequest.put("notes", notes);
+
+        // 3. Create Order with Razorpay
+        Order order = razorpayClient.orders.create(orderRequest);
+        logger.info("Razorpay Order created: ID={}, Amount={}, ItemID={}", order.get("id"), order.get("amount"), item.getId());
+
+        // 4. Update Item Payment Status to PENDING (or store order_id on item)
+        item.setPaymentStatus("PENDING_RAZORPAY_ORDER_" + order.get("id")); // Store order ID
+        // You might want a dedicated field for razorpay_order_id on your Item entity
+        itemService.itemRepository.save(item); // Assuming ItemService exposes itemRepository or has a save method
+
+        return order.get("id"); // Return Razorpay Order ID to the frontend
+    }
+
+    // This method would be called by your webhook handler
+    @Transactional
+    public void handlePaymentSuccess(String razorpayOrderId, String razorpayPaymentId, String razorpaySignature) {
+        // Here you would typically verify the signature (see Razorpay docs for WebhookUtils.verifyPaymentSignature)
+        // For this simplified example, we assume if webhook is called, it's a success from Razorpay for demo
+        logger.info("Webhook received for successful payment. Razorpay Order ID: {}, Payment ID: {}", razorpayOrderId, razorpayPaymentId);
+
+        // Find the item associated with this Razorpay order ID
+        // This assumes you stored it in paymentStatus or a dedicated field
+        // This part needs robust logic to find the correct item.
+        // For example, if you stored "PENDING_RAZORPAY_ORDER_XYZ" in paymentStatus:
+        List<Item> items = itemService.itemRepository.findAll(); // Inefficient, query properly
+        Item paidItem = null;
+        for(Item item : items) {
+            if (item.getPaymentStatus() != null && item.getPaymentStatus().equals("PENDING_RAZORPAY_ORDER_" + razorpayOrderId)) {
+                paidItem = item;
+                break;
+            }
+        }
+
+        if (paidItem != null) {
+            paidItem.setPaymentStatus("PAID");
+            paidItem.setPaymentGatewayTransactionId(razorpayPaymentId); // Add this field to Item entity
+            itemService.itemRepository.save(paidItem);
+            logger.info("Item ID: {} marked as PAID. Razorpay Payment ID: {}", paidItem.getId(), razorpayPaymentId);
+            // TODO: Send confirmation email to user, notify seller, etc.
+        } else {
+            logger.warn("Could not find item associated with Razorpay Order ID: {} in webhook.", razorpayOrderId);
+        }
+    }
+
+     @Transactional
+    public void handlePaymentFailure(String razorpayOrderId, String description) {
+        logger.error("Webhook received for failed payment. Razorpay Order ID: {}, Description: {}", razorpayOrderId, description);
+        // Find item and update status to FAILED or similar
+        List<Item> items = itemService.itemRepository.findAll();
+        Item failedItem = null;
+        for(Item item : items) {
+             if (item.getPaymentStatus() != null && item.getPaymentStatus().equals("PENDING_RAZORPAY_ORDER_" + razorpayOrderId)) {
+                failedItem = item;
+                break;
+            }
+        }
+        if (failedItem != null) {
+            failedItem.setPaymentStatus("FAILED_RAZORPAY");
+            itemService.itemRepository.save(failedItem);
+        } else {
+             logger.warn("Could not find item for failed payment. Razorpay Order ID: {}", razorpayOrderId);
+        }
+    }
+}

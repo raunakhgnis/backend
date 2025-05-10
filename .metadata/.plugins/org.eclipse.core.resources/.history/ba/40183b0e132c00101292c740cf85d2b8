@@ -1,0 +1,80 @@
+package com.example.simpleauction.dto;
+
+import lombok.Data;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Data
+public class BidDTO {
+    private Long id;
+    private Long itemId;
+    private String itemName; // Add item name for context
+    private String bidderEmail;
+    private BigDecimal bidAmount;
+    private LocalDateTime bidTime;
+
+    
+
+    public BidDTO(Long id, Long itemId, String itemName, String bidderEmail, BigDecimal bidAmount, LocalDateTime bidTime) {
+        this.id = id;
+        this.itemId = itemId;
+        this.itemName = itemName;
+        this.bidderEmail = bidderEmail;
+        this.bidAmount = bidAmount;
+        this.bidTime = bidTime;
+    }
+
+    public BidDTO() {
+    }
+
+	public Long getId() {
+		return id;
+	}
+
+	public void setId(Long id) {
+		this.id = id;
+	}
+
+	public Long getItemId() {
+		return itemId;
+	}
+
+	public void setItemId(Long itemId) {
+		this.itemId = itemId;
+	}
+
+	public String getItemName() {
+		return itemName;
+	}
+
+	public void setItemName(String itemName) {
+		this.itemName = itemName;
+	}
+
+	public String getBidderEmail() {
+		return bidderEmail;
+	}
+
+	public void setBidderEmail(String bidderEmail) {
+		this.bidderEmail = bidderEmail;
+	}
+
+	public BigDecimal getBidAmount() {
+		return bidAmount;
+	}
+
+	public void setBidAmount(BigDecimal bidAmount) {
+		this.bidAmount = bidAmount;
+	}
+
+	public LocalDateTime getBidTime() {
+		return bidTime;
+	}
+
+	public void setBidTime(LocalDateTime bidTime) {
+		this.bidTime = bidTime;
+	}
+    
+    
+}
+

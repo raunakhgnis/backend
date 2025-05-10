@@ -1,0 +1,70 @@
+package com.example.simpleauction.service;
+
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+
+import com.example.simpleauction.dto.AuthRequest;
+import com.example.simpleauction.dto.AuthResponse;
+import com.example.simpleauction.dto.MessageResponse;
+import com.example.simpleauction.entity.User;
+import com.example.simpleauction.repository.UserRepository;
+
+@Service
+public class AuthService {
+    private final UserRepository userRepository;
+    private final Map<String, String> activeTokens = new ConcurrentHashMap<>();
+
+    public AuthService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    // Change return type to ResponseEntity<MessageResponse> for the success case
+    public ResponseEntity<MessageResponse> registerUser(AuthRequest signUpRequest) {
+        if (userRepository.existsByEmail(signUpRequest.getEmail())) {
+            // This still works because MessageResponse fits within <?> if needed,
+            // but it's clearer to match the expected return body on error too.
+            return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is already in use!"));
+        }
+        User user = new User(signUpRequest.getEmail(), signUpRequest.getPassword());
+        userRepository.save(user);
+        // Now ResponseEntity.ok() knows the type T is MessageResponse
+        return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
+    }
+
+    // Change return type to match the expected success body (AuthResponse)
+    // Or keep as <?> and use Option 2 or 3 below. Let's try being specific:
+    // You might need ResponseEntity<Object> if success returns AuthResponse and error returns MessageResponse
+    public ResponseEntity<?> loginUser(AuthRequest loginRequest) {
+        Optional<User> userData = userRepository.findByEmail(loginRequest.getEmail());
+        if (userData.isPresent()) {
+            User user = userData.get();
+            if (user.getPassword().equals(loginRequest.getPassword())) {
+                String token = UUID.randomUUID().toString();
+                activeTokens.put(token, user.getEmail());
+                // Explicitly type ok() if needed, or just return it now
+                 return ResponseEntity.ok(new AuthResponse("Login successful", token, user.getEmail()));
+                // Or more explicitly:
+                // return ResponseEntity.ok().body(new AuthResponse("Login successful", token, user.getEmail()));
+            }
+        }
+        // Error case returns MessageResponse, which is compatible with <?>
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse("Error: Invalid credentials"));
+    }
+
+
+    public boolean isValidToken(String token) {
+        return token != null && activeTokens.containsKey(token.replace("Bearer ", ""));
+    }
+
+    public void logoutUser(String token) {
+         if (token != null) {
+            activeTokens.remove(token.replace("Bearer ", ""));
+        }
+    }
+}

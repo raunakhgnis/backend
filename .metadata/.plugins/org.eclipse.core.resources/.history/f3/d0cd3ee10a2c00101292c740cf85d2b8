@@ -1,0 +1,100 @@
+package com.example.simpleauction.entity;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Table(name = "items")
+@Data
+@NoArgsConstructor
+public class Item {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String name;
+    private String description;
+    private BigDecimal startingPrice;
+    private String imageUrl;
+    private LocalDateTime auctionEndTime;
+
+    @ManyToOne // For simplicity, not strictly enforcing seller in this minimal version
+    @JoinColumn(name = "seller_id", nullable = true)
+    private User seller;
+
+    public Item(String name, String description, BigDecimal startingPrice, String imageUrl, LocalDateTime endTime) {
+        this.name = name;
+        this.description = description;
+        this.startingPrice = startingPrice;
+        this.imageUrl = imageUrl;
+        this.auctionEndTime = endTime;
+    }
+    // Default constructor for JPA
+    public Item() {}
+    // Getters and Setters (optional if using Lombok)
+
+	public Long getId() {
+		return id;
+	}
+
+	public void setId(Long id) {
+		this.id = id;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getDescription() {
+		return description;
+	}
+
+	public void setDescription(String description) {
+		this.description = description;
+	}
+
+	public BigDecimal getStartingPrice() {
+		return startingPrice;
+	}
+
+	public void setStartingPrice(BigDecimal startingPrice) {
+		this.startingPrice = startingPrice;
+	}
+
+	public String getImageUrl() {
+		return imageUrl;
+	}
+
+	public void setImageUrl(String imageUrl) {
+		this.imageUrl = imageUrl;
+	}
+
+	public LocalDateTime getAuctionEndTime() {
+		return auctionEndTime;
+	}
+
+	public void setAuctionEndTime(LocalDateTime auctionEndTime) {
+		this.auctionEndTime = auctionEndTime;
+	}
+
+	public User getSeller() {
+		return seller;
+	}
+
+	public void setSeller(User seller) {
+		this.seller = seller;
+	}
+}

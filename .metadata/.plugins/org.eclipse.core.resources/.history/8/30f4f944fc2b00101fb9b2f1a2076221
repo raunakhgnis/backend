@@ -1,0 +1,60 @@
+package com.example.simpleauction.service;
+
+import com.example.simpleauction.dto.AuthRequest;
+import com.example.simpleauction.dto.AuthResponse;
+import com.example.simpleauction.dto.MessageResponse;
+import com.example.simpleauction.entity.User;
+import com.example.simpleauction.repository.UserRepository;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+@Service
+public class AuthService {
+    private final UserRepository userRepository;
+    // VERY basic in-memory token store for demo. NOT FOR PRODUCTION.
+    private final Map<String, String> activeTokens = new ConcurrentHashMap<>();
+
+    public AuthService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    public ResponseEntity<?> registerUser(AuthRequest signUpRequest) {
+        if (userRepository.existsByEmail(signUpRequest.getEmail())) {
+            return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is already in use!"));
+        }
+        // In a real app: HASH THE PASSWORD
+        User user = new User(signUpRequest.getEmail(), signUpRequest.getPassword());
+        userRepository.save(user);
+        return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
+    }
+
+    public ResponseEntity<?> loginUser(AuthRequest loginRequest) {
+        Optional<User> userData = userRepository.findByEmail(loginRequest.getEmail());
+        if (userData.isPresent()) {
+            User user = userData.get();
+            // In a real app: Compare HASHED passwords
+            if (user.getPassword().equals(loginRequest.getPassword())) {
+                String token = UUID.randomUUID().toString(); // Simple token
+                activeTokens.put(token, user.getEmail());
+                return ResponseEntity.ok(new AuthResponse("Login successful", token, user.getEmail()));
+            }
+        }
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse("Error: Invalid credentials"));
+    }
+
+    public boolean isValidToken(String token) {
+        return token != null && activeTokens.containsKey(token.replace("Bearer ", ""));
+    }
+
+    public void logoutUser(String token) {
+         if (token != null) {
+            activeTokens.remove(token.replace("Bearer ", ""));
+        }
+    }
+}

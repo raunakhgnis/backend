@@ -1,0 +1,28 @@
+
+package com.example.simpleauction.entity; // Correct package
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Table(name = "users") // Specifies the database table name
+@Data // Lombok annotation for getters, setters, toString, equals, hashCode
+@NoArgsConstructor // Lombok annotation for a no-argument constructor
+public class User {
+    @Id // Marks this field as the primary key
+    @GeneratedValue(strategy = GenerationType.IDENTITY) // Auto-increments the ID
+    private Long id;
+
+    @Column(unique = true, nullable = false) // Database column constraints
+    private String email;
+
+    @Column(nullable = false)
+    private String password; // In a real app, this would be hashed
+
+    // Constructor for creating new users
+    public User(String email, String password) {
+        this.email = email;
+        this.password = password;
+    }
+}

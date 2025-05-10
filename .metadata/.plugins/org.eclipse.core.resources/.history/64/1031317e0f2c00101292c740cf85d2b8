@@ -1,0 +1,5 @@
+package com.example.simpleauction.dto;
+
+public class AddItemRequest {
+
+}

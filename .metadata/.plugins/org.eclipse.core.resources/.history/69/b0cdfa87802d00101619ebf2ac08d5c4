@@ -1,0 +1,48 @@
+package com.example.simpleauction.config;
+
+import com.example.simpleauction.entity.Item;
+import com.example.simpleauction.entity.User;
+import com.example.simpleauction.entity.Bid; // Import Bid
+import com.example.simpleauction.repository.BidRepository; // Import Bid Repo
+import com.example.simpleauction.repository.ItemRepository;
+import com.example.simpleauction.repository.UserRepository;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Configuration
+public class DataInitializer {
+
+    @Bean
+    CommandLineRunner initDatabase(UserRepository userRepository, ItemRepository itemRepository, BidRepository bidRepository) { // Inject BidRepository
+        return args -> {
+            if (userRepository.count() == 0) { // Only run if DB is empty
+                // Create Users
+                User user1 = userRepository.save(new User("test@example.com", "password"));
+                User seller = userRepository.save(new User("seller@example.com", "sellerpass"));
+                User bidder2 = userRepository.save(new User("bidder2@example.com", "bidderpass"));
+
+                // Create Items with Categories and Sellers
+                Item item1 = itemRepository.save(new Item("Vintage Lancer Model", "1976 L-Type Mitsubishi Lancer", new BigDecimal("80.00"), "Vehicle", "/images/lancer.jpg", LocalDateTime.now().plusDays(5), seller));
+                Item item2 = itemRepository.save(new Item("Old Peso Bill", "Collectible Philippine One Peso", new BigDecimal("20.00"), "Collectibles", "/images/peso.jpg", LocalDateTime.now().plusDays(3), seller));
+                Item item3 = itemRepository.save(new Item("Abstract Painting", "Colorful modern art on canvas", new BigDecimal("150.00"), "Art", "/images/art.jpg", LocalDateTime.now().plusDays(7), user1)); // Different seller
+                Item item4 = itemRepository.save(new Item("Running Shoes", "Comfortable sports shoes, size 10", new BigDecimal("60.00"), "Fashion", "/images/shoes.jpg", LocalDateTime.now().plusDays(2), seller));
+                Item item5 = itemRepository.save(new Item("Old Painting", "Scenery painting", new BigDecimal("120.00"), "Art", "/images/art2.jpg", LocalDateTime.now().plusDays(4), seller)); // Another art item
+
+                // Create Sample Bids
+                bidRepository.save(new Bid(item4, user1, new BigDecimal("65.00"), LocalDateTime.now().minusHours(10))); // user1 bids on item4
+                bidRepository.save(new Bid(item4, bidder2, new BigDecimal("70.00"), LocalDateTime.now().minusHours(5))); // bidder2 outbids
+                item4.setCurrentBidPrice(new BigDecimal("70.00")); // Manually update item's current bid for consistency
+                item4.setHighestBidder(bidder2);
+                itemRepository.save(item4); // Save the updated item
+
+                bidRepository.save(new Bid(item1, user1, new BigDecimal("85.00"), LocalDateTime.now().minusDays(1))); // user1 bids on item1
+
+                System.out.println("Sample data initialized with categories, sellers, and bids.");
+            }
+        };
+    }
+}
+

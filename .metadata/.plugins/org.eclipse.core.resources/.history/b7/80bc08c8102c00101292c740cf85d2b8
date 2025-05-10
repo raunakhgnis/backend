@@ -1,0 +1,45 @@
+package com.example.simpleauction.config;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import com.example.simpleauction.entity.Item;
+import com.example.simpleauction.entity.User;
+import com.example.simpleauction.repository.ItemRepository;
+import com.example.simpleauction.repository.UserRepository;
+
+@Configuration
+public class DataInitializer {
+
+    @Bean
+    CommandLineRunner initDatabase(UserRepository userRepository, ItemRepository itemRepository) {
+        return args -> {
+            if (userRepository.count() == 0) { // Only run if DB is empty
+                User user1 = userRepository.save(new User("test@example.com", "password")); // HASH in real app
+                User seller = userRepository.save(new User("seller@example.com", "sellerpass"));
+
+                Item item1 = new Item("Vintage Lancer Model", "1976 L-Type Mitsubishi Lancer", new BigDecimal("80.00"), "/images/lancer.jpg", LocalDateTime.now().plusDays(5));
+                item1.setSeller(seller);
+                itemRepository.save(item1);
+
+                Item item2 = new Item("Old Peso Bill", "Collectible Philippine One Peso", new BigDecimal("20.00"), "/images/peso.jpg", LocalDateTime.now().plusDays(3));
+                item2.setSeller(seller);
+                itemRepository.save(item2);
+
+                Item item3 = new Item("Abstract Painting", "Colorful modern art", new BigDecimal("150.00"), "/images/art.jpg", LocalDateTime.now().plusDays(7));
+                item3.setSeller(user1); // Different seller
+                itemRepository.save(item3);
+
+                Item item4 = new Item("Running Shoes", "Comfortable sports shoes", new BigDecimal("60.00"), "/images/shoes.jpg", LocalDateTime.now().plusDays(2));
+                item4.setSeller(seller);
+                itemRepository.save(item4);
+
+                System.out.println("Sample data initialized.");
+            }
+        };
+    }
+}

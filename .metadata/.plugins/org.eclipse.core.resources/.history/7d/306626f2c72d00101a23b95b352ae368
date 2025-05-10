@@ -1,0 +1,248 @@
+package com.example.simpleauction.controller;
+
+import com.example.simpleauction.dto.AddItemRequest;
+import com.example.simpleauction.dto.BidRequest;
+import com.example.simpleauction.dto.ItemDTO;
+import com.example.simpleauction.dto.MessageResponse;
+import com.example.simpleauction.entity.User;
+import com.example.simpleauction.repository.UserRepository;
+import com.example.simpleauction.service.AuthService;
+import com.example.simpleauction.service.BidService;
+import com.example.simpleauction.service.ItemService;
+import com.example.simpleauction.service.PaymentService; // Correct import for PaymentService
+import com.razorpay.RazorpayException; // Keep if PaymentService throws it and you catch it here
+import com.razorpay.Utils;
+import jakarta.persistence.EntityNotFoundException;
+import org.json.JSONObject; // For creating JSON response
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal; // <--- ADD THIS IMPORT
+import java.util.List;
+// Removed import java.util.Map; as webhook payload is now String then JSONObject
+
+@RestController
+// @RequestMapping("/api/items") // Keep if endpoints are here, or move to specific controllers
+public class ItemController { // Or PaymentController for payment related endpoints
+    private static final Logger logger = LoggerFactory.getLogger(ItemController.class);
+
+    private final ItemService itemService;
+    private final AuthService authService;
+    private final BidService bidService;
+    private final PaymentService paymentService;
+    private final UserRepository userRepository;
+
+    // Inject Razorpay Key ID from application.properties
+    @Value("${razorpay.key.id}")
+    private String razorpayKeyId;
+
+    @Value("${razorpay.webhook.secret}")
+    private String webhookSecret;
+
+    // Remove the uninitialized final RazorpayClient field
+    // private final RazorpayClient razorpayClient;
+
+    public ItemController(ItemService itemService, AuthService authService, BidService bidService,
+                          PaymentService paymentService, UserRepository userRepository) {
+        this.itemService = itemService;
+        this.authService = authService;
+        this.bidService = bidService;
+        this.paymentService = paymentService;
+        this.userRepository = userRepository;
+        // No need to initialize razorpayClient here if PaymentService handles it
+    }
+
+    // --- Item Listing, Detail, Search, Category Endpoints (as before) ---
+    @GetMapping("/api/items")
+    public ResponseEntity<List<ItemDTO>> getItems(
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String search) {
+        logger.info("Request received for items. Category: '{}', Search: '{}'", category, search);
+        if (category != null && !category.isBlank()) {
+             logger.debug("Fetching items by category: {}", category);
+            return ResponseEntity.ok(itemService.getItemsByCategory(category));
+        } else if (search != null && !search.isBlank()) {
+             logger.debug("Searching items with term: {}", search);
+             return ResponseEntity.ok(itemService.searchItems(search));
+        } else {
+             logger.debug("Fetching all items.");
+            return ResponseEntity.ok(itemService.getAllItems());
+        }
+    }
+
+    @GetMapping("/api/items/{id}")
+    public ResponseEntity<?> getItemById(@PathVariable Long id) {
+        logger.debug("Request received for item ID: {}", id);
+         return itemService.getItemDtoById(id)
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> {
+                     logger.warn("Item not found with ID: {}", id);
+                     return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                                      .body(new MessageResponse("Item not found with ID: " + id));
+                });
+    }
+
+    @PostMapping("/api/items")
+    public ResponseEntity<?> addItem(
+            @RequestBody AddItemRequest addItemRequest,
+            @RequestHeader("Authorization") String token) {
+        logger.info("Request received to add new item: {}", addItemRequest.getName());
+        String userEmail = authService.getUserEmailFromToken(token);
+         if (userEmail == null) {
+              logger.warn("Unauthorized attempt to add item. Invalid token provided.");
+             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse("Unauthorized: Invalid session."));
+         }
+        try {
+            ItemDTO createdItem = itemService.createItem(addItemRequest, userEmail);
+            logger.info("Successfully added item ID: {}, Name: {}", createdItem.getId(), createdItem.getName());
+            return ResponseEntity.status(HttpStatus.CREATED).body(createdItem);
+        } catch (EntityNotFoundException e) { /* ... error handling ... */
+             logger.warn("Failed to add item. Reason: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponse(e.getMessage()));
+        } catch (IllegalArgumentException e) { /* ... error handling ... */
+             logger.warn("Failed to add item due to invalid argument. Reason: {}", e.getMessage());
+             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponse(e.getMessage()));
+        } catch (Exception e) { /* ... error handling ... */
+             logger.error("Internal error adding item.", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new MessageResponse("Failed to add item due to an internal error."));
+        }
+    }
+
+    // --- Bidding Endpoints (as before) ---
+     @PostMapping("/api/items/{id}/bid")
+    public ResponseEntity<?> placeBid(
+            @PathVariable Long id,
+            @RequestBody BidRequest bidRequest,
+            @RequestHeader("Authorization") String token) {
+        // ... (implementation from previous correct version) ...
+        logger.info("Request received to place bid on item ID: {}", id);
+        String userEmail = authService.getUserEmailFromToken(token);
+         if (userEmail == null) {
+              logger.warn("Unauthorized attempt to bid on item ID: {} (Invalid Token)", id);
+             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse("Unauthorized: Invalid session."));
+         }
+        try {
+            return ResponseEntity.ok(bidService.placeBid(id, bidRequest, userEmail));
+        } catch (EntityNotFoundException e) { /* ... error handling ... */
+             logger.warn("Failed to place bid on item ID: {}. Item not found.", id);
+             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new MessageResponse(e.getMessage()));
+        } catch (IllegalArgumentException | IllegalStateException e) { /* ... error handling ... */
+             logger.warn("Failed to place bid on item ID: {}. Reason: {}", id, e.getMessage());
+             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponse(e.getMessage()));
+        } catch (Exception e) { /* ... error handling ... */
+             logger.error("Internal error placing bid on item ID: {}", id, e);
+             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new MessageResponse("Failed to place bid due to an internal error."));
+        }
+    }
+
+    @GetMapping("/api/items/{id}/bids")
+    public ResponseEntity<?> getBidsForItem(@PathVariable Long id) {
+        // ... (implementation from previous correct version) ...
+        logger.debug("Request received for bids for item ID: {}", id);
+        try {
+            return ResponseEntity.ok(bidService.getBidsForItem(id));
+        } catch (Exception e) {
+             logger.error("Failed to retrieve bids for item ID: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new MessageResponse("Failed to retrieve bids."));
+        }
+    }
+
+    // --- MODIFIED Payment Endpoint to create Razorpay Order ---
+    @PostMapping("/api/items/{id}/create-razorpay-order")
+    public ResponseEntity<?> createRazorpayOrder(
+            @PathVariable Long id,
+            @RequestHeader("Authorization") String token
+    ) {
+        logger.info("Request to create Razorpay order for item ID: {}", id);
+        String userEmail = authService.getUserEmailFromToken(token);
+        if (userEmail == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse("Unauthorized: Invalid session."));
+        }
+
+        User user = userRepository.findByEmail(userEmail)
+                .orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse("User not found for payment."));
+        }
+
+        try {
+            String razorpayOrderId = paymentService.createRazorpayOrder(id, user);
+            JSONObject responseJson = new JSONObject();
+            responseJson.put("keyId", this.razorpayKeyId); // Use the @Value injected field
+            responseJson.put("orderId", razorpayOrderId);
+            // Ensure itemService.getItemEntityById(id).getCurrentBidPrice() is not null
+            BigDecimal amount = itemService.getItemEntityById(id).getCurrentBidPrice();
+            if (amount == null) {
+                logger.error("Item ID {} has null currentBidPrice for payment.", id);
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new MessageResponse("Item price not available."));
+            }
+            responseJson.put("amount", amount.multiply(new BigDecimal("100")).intValue());
+            responseJson.put("currency", "INR"); // Or from config
+            responseJson.put("prefillName", user.getEmail()); // Or a full name field if you add it to User
+            responseJson.put("prefillEmail", user.getEmail());
+
+            return ResponseEntity.ok(responseJson.toString());
+        } catch (RazorpayException e) {
+            logger.error("Razorpay Error creating order for item ID: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new MessageResponse("Error creating payment order: " + e.getMessage()));
+        } catch (EntityNotFoundException | IllegalArgumentException | IllegalStateException e) {
+            logger.warn("Validation failed for Razorpay order creation. Item ID: {}, Reason: {}", id, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponse(e.getMessage()));
+        } catch (Exception e) { // Catch any other unexpected errors
+            logger.error("Unexpected error during Razorpay order creation for item ID: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new MessageResponse("Unexpected error creating payment order."));
+        }
+    }
+
+    // --- NEW Webhook Endpoint for Razorpay ---
+    @PostMapping("/api/webhooks/razorpay")
+    public ResponseEntity<?> handleRazorpayWebhook(
+            @RequestBody String payload,
+            @RequestHeader("X-Razorpay-Signature") String receivedSignature
+    ) {
+        logger.info("Razorpay Webhook received.");
+        try {
+            boolean isValidSignature = Utils.verifyWebhookSignature(payload, receivedSignature, webhookSecret);
+
+            if (!isValidSignature) {
+                logger.warn("Invalid Razorpay webhook signature received.");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid signature");
+            }
+
+            JSONObject event = new JSONObject(payload);
+            String eventType = event.optString("event"); // Use optString for safety
+            if (event.has("payload") && event.getJSONObject("payload").has("payment") &&
+                event.getJSONObject("payload").getJSONObject("payment").has("entity")) {
+
+                JSONObject paymentEntity = event.getJSONObject("payload").getJSONObject("payment").getJSONObject("entity");
+                String razorpayOrderId = paymentEntity.optString("order_id");
+                String razorpayPaymentId = paymentEntity.optString("id");
+
+                logger.info("Webhook event type: {}, Razorpay Order ID: {}", eventType, razorpayOrderId);
+
+                if ("payment.captured".equals(eventType) || "order.paid".equals(eventType)) {
+                    paymentService.handlePaymentSuccess(razorpayOrderId, razorpayPaymentId, receivedSignature);
+                } else if ("payment.failed".equals(eventType)) {
+                    String description = paymentEntity.optString("error_description", "Payment failed");
+                    paymentService.handlePaymentFailure(razorpayOrderId, description);
+                } else {
+                    logger.info("Received unhandled Razorpay event type: {}", eventType);
+                }
+            } else {
+                 logger.warn("Webhook payload structure not as expected for payment/order details.");
+            }
+            return ResponseEntity.ok("Webhook processed");
+
+        } catch (RazorpayException e) {
+            logger.error("RazorpayException during webhook processing: ", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Error processing webhook: " + e.getMessage());
+        } catch (Exception e) {
+             logger.error("Unexpected error during webhook processing: ", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Internal server error processing webhook");
+        }
+    }
+}

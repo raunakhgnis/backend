@@ -1,0 +1,18 @@
+package com.example.simpleauction.dto;
+
+import lombok.AllArgsConstructor; // Make sure this import is present
+import lombok.Data;
+
+@Data 
+@AllArgsConstructor // <--- THIS IS CRUCIAL - Generates the constructor
+public class MessageResponse {
+    private String message; // The single field requiring the constructor argument
+
+	public String getMessage() {
+		return message;
+	}
+
+	public void setMessage(String message) {
+		this.message = message;
+	}
+}

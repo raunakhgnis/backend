@@ -1,0 +1,24 @@
+package com.example.simpleauction.dto; // Ensure this package name is correct
+
+import lombok.AllArgsConstructor; // Make sure this import exists
+import lombok.Data;
+import lombok.NoArgsConstructor; // Add this for completeness, although not strictly needed for the error
+
+@Data
+@NoArgsConstructor // Good practice to have a default constructor too
+@AllArgsConstructor // THIS is the one that should generate the String constructor
+public class MessageResponse {
+    private String message;
+    
+    public MessageResponse(String message) {
+        this.message = message;
+    }
+
+	public String getMessage() {
+		return message;
+	}
+
+	public void setMessage(String message) {
+		this.message = message;
+	}
+}
